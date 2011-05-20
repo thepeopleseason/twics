@@ -5,7 +5,7 @@ import simplejson
 from time import sleep
 import urllib2
 
-username = 'thepeopleseason'
+username = 'crapfrommypast'
 filename = '%s.json' % (username)
 
 seen = {}
@@ -16,23 +16,22 @@ else:
     tl = []
 
 for tweet in tl:
-    seen[tweet['id_str']] = 1
+    seen[tweet['id']] = 1
 
-for page in range(1,160):
+for page in range(1,5):
     print "fetching page %s" % (page)
     try:
-        json = urllib2.urlopen('http://api.twitter.com/1/statuses/user_timeline.json?screen_name=%s&page=%s' % (username, page)).read()
+        json = urllib2.urlopen('http://api.twitter.com/1/statuses/user_timeline.json?screen_name=%s&page=%s&count=200' % (username, page)).read()
     except:
         print "Ratelimited: sleeping for ten minutes..."
         sleep(600)
-        json = urllib2.urlopen('http://api.twitter.com/1/statuses/user_timeline.json?screen_name=%s&page=%s' % (username, page)).read()
+        json = urllib2.urlopen('http://api.twitter.com/1/statuses/user_timeline.json?screen_name=%s&page=%s&count=200' % (username, page)).read()
 
     ctl = simplejson.loads(json)
     for tweet in ctl:
         del tweet['user']
         if not seen.get(tweet['id_str']):
             tl.append(tweet)
-    sleep(50)
 
 with open(filename, 'w') as FILE:
-    FILE.write(simplejson.dumps(tl))
+    FILE.write(simplejson.dumps(tl, indent=2))
