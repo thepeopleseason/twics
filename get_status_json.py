@@ -28,18 +28,18 @@ for tweet in tl:
 
 for page in range(1,5):
     print "fetching page %s" % (page)
-    apiurl = '%s?screen_name=%s&page=%s&count=200' % (
+    apiurl = '%s?screen_name=%s&page=%s&count=200&trim_user=1' % (
         apicall[protocol], username, page)
     try:
-        json = urllib2.urlopen(url).read()
+        json = urllib2.urlopen(apiurl).read()
     except:
         print "Ratelimited: sleeping for ten minutes..."
         sleep(600)
-        json = urllib2.urlopen(url).read()
+        json = urllib2.urlopen(apiurl).read()
 
     ctl = simplejson.loads(json)
     for tweet in ctl:
-        tweet['user'] = username
+        tweet['username'] = username
         if not seen.get(tweet['id_str']):
             tl.append(tweet)
     sleep(sleepinterval)
