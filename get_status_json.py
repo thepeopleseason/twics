@@ -2,8 +2,10 @@
 
 import os.path
 import simplejson
-from time import sleep
 import urllib2
+
+from dateutil import parser
+from time import sleep
 
 username = 'seasonsinexile'
 protocol = 'twitter'
@@ -16,20 +18,30 @@ apicall = {
     'identica' : 'http://identi.ca/api/statuses/user_timeline.json',
     }
 
-seen = {}
 if os.path.isfile(filename):
     with open(filename, 'r') as FILE:
         tl = simplejson.loads(FILE.read())
 else:
     tl = []
 
+# process existing list
+seen = {}
+max_id = 0
+since = ''
 for tweet in tl:
     seen[tweet['id']] = 1
+    if tweet['id'] > max_id:
+        max_id = tweet['id']
+
+if max_id:
+    since = '&since_id=%s' % (max_id)
 
 for page in range(1,17):
     print "fetching page %s" % (page)
-    apiurl = '%s?screen_name=%s&page=%s&count=200' % (
-        apicall[protocol], username, page)
+    apiurl = '%s?screen_name=%s&page=%s&count=200%s' % (
+        apicall[protocol], username, page, since)
+    print apiurl
+
     try:
         json = urllib2.urlopen(apiurl).read()
     except:
@@ -51,6 +63,8 @@ for page in range(1,17):
         if not seen.get(tweet['id_str']):
             tl.append(tweet)
     sleep(sleepinterval)
+
+tl.sort(key=lambda tw: parser.parse(tw['created_at']), reverse=True)
 
 with open(filename, 'w') as FILE:
     FILE.write(simplejson.dumps(tl, indent=2))
