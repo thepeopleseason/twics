@@ -5,9 +5,9 @@ import simplejson
 from time import sleep
 import urllib2
 
-username = 'crapfrommypast'
+username = 'seasonsinexile'
 protocol = 'twitter'
-filename = '%s-%s.json' % (protocol, username)
+filename = '%s-%s.json' % (username, protocol)
 
 sleepinterval = 10
 
@@ -26,9 +26,9 @@ else:
 for tweet in tl:
     seen[tweet['id']] = 1
 
-for page in range(1,5):
+for page in range(1,17):
     print "fetching page %s" % (page)
-    apiurl = '%s?screen_name=%s&page=%s&count=200&trim_user=1' % (
+    apiurl = '%s?screen_name=%s&page=%s&count=200' % (
         apicall[protocol], username, page)
     try:
         json = urllib2.urlopen(apiurl).read()
@@ -38,8 +38,16 @@ for page in range(1,5):
         json = urllib2.urlopen(apiurl).read()
 
     ctl = simplejson.loads(json)
+    if len(ctl) == 0:
+        print "no results returned, exiting loop"
+        break
+
     for tweet in ctl:
-        tweet['username'] = username
+        tweet['username'] = tweet['user']['screen_name']
+        tweet['protocol'] = protocol
+
+        del tweet['user']
+
         if not seen.get(tweet['id_str']):
             tl.append(tweet)
     sleep(sleepinterval)
