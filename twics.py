@@ -1,14 +1,21 @@
 #!/usr/bin/python
 
+""" twics.py -- various functions to convert microblogging service
+status updates into ical format for inclusion on calendars """
+
 import os.path
 import simplejson
 import urllib2
+import vobject
 
 from dateutil import parser
 from optparse import OptionParser, OptionGroup
 from time import sleep
 
 def clean_status(tweet, protocol):
+    """ add username and protocol attributes to json output and remove
+    extraneous user details """
+
     if not tweet.get('username') and \
             tweet.get('user') and tweet['user'].get('screen_name'):
         tweet['username'] = tweet['user']['screen_name']
@@ -20,16 +27,14 @@ def clean_status(tweet, protocol):
     return tweet
 
 def fetch_statuses(opts, args):
+    """ fetch the most recent statuses from the microblogging service """
+
     apicall = {
         'twitter': 'http://api.twitter.com/1/statuses/user_timeline.json',
         'identica' : 'http://identi.ca/api/statuses/user_timeline.json',
         }
 
-    if os.path.isfile(opts.file):
-        with open(opts.file, 'r') as FILE:
-            tl = simplejson.loads(FILE.read())
-    else:
-        tl = []
+    tl = load_json_list(opts.file)
 
     # process existing list
     seen = {}
@@ -43,7 +48,7 @@ def fetch_statuses(opts, args):
     if max_id:
         since = '&since_id=%s' % (max_id)
 
-    for page in range(1,17):
+    for page in range(1, 17):
         if opts.verbose:
             print "fetching page %s" % (page)
         apiurl = '%s?screen_name=%s&page=%s&count=200%s' % (
@@ -75,16 +80,15 @@ def fetch_statuses(opts, args):
     write_json(tl, opts.file)
 
 def integrate_statuses(opts, args):
+    """ integrate individual statuses or a list of status urls/ids into
+    an existing json archive"""
+
     apicall = {
         'twitter': 'http://api.twitter.com/1/statuses/show',
         'identica': 'http://identi.ca/api/statuses/show',
         }
 
-    if os.path.isfile(opts.file):
-        with open(opts.file, 'r') as FILE:
-            tl = simplejson.loads(FILE.read())
-    else:
-        tl = []
+    tl = load_json_list(opts.file)
 
     # process existing list
     seen = {}
@@ -96,13 +100,14 @@ def integrate_statuses(opts, args):
         with open(opts.indiv, 'r') as FILE:
             lines = FILE.read().split('\n')
     else:
+        # url/id passed in on command line
         lines = [ opts.indiv, ]
 
     for line in lines:
         tid = None
         try:
             tid = int(line.split('/')[-1])
-        except:
+        except ValueError:
             continue
 
         if tid and not seen.get(tid):
@@ -124,18 +129,22 @@ def integrate_statuses(opts, args):
 
     write_json(tl, opts.file)
 
+def load_json_list(input_file):
+    """ load json file and return the listing (otherwise return empty list)"""
+    if os.path.isfile(input_file):
+        with open(input_file, 'r') as FILE:
+            listing = simplejson.loads(FILE.read())
+    else:
+        listing = []
+
+    return listing
+
 def merge_status_files(opts, args):
-    seen = {}
+    """ merge multiple status json archives """
+
     tl = []
-
     for status_file in args:
-        if os.path.isfile(status_file):
-            with open(status_file, 'r') as FILE:
-                ctl = simplejson.loads(FILE.read())
-        else:
-            ctl = []
-
-        tl.extend(ctl)
+        tl.extend(load_json_list(status_file))
 
     for tweet in tl:
         clean_status(tweet, opts.protocol)
@@ -143,14 +152,9 @@ def merge_status_files(opts, args):
     write_json(tl, opts.file)
 
 def status2ics(opts, args):
-    import vobject
+    """ write ical format of status updates """
 
-    jsonfile = args[0]
-    if os.path.isfile(jsonfile):
-        with open(jsonfile, 'r') as FILE:
-            tl = simplejson.loads(FILE.read())
-    else:
-        tl = []
+    tl = load_json_list(args[0])
 
     cal = vobject.iCalendar()
     cal.add('prodid').value = '-//twitter.com/twitter ICS//EN'
@@ -184,74 +188,23 @@ def status2ics(opts, args):
         FILE.write(cal.serialize())
 
 def write_json(tl, output_file):
+    """ write output json file """
+
     # sort status updates in descending order
     tl.sort(key=lambda tw: parser.parse(tw['created_at']), reverse=True)
 
     with open(output_file, 'w') as FILE:
         FILE.write(simplejson.dumps(tl, indent=2))
 
+def emit_usage(oparser, die=True):
+    """ emit program help """
+
+    oparser.print_help()
+    if die:
+        exit(1)
 
 def main():
-    usage = 'usage: %prog <action> [options]'
-    parser = OptionParser(usage=usage, version='%prog 0.1')
-    parser.add_option("-v", "--verbose", dest="verbose",
-                      action="store_true",
-                      help="verbose output")
-    parser.add_option("-f", dest="file",
-                      help="output file (input and output on fetch)")
-
-    # %prog fetch options
-    fgroup = OptionGroup(parser, "fetch/integrate options")
-    fgroup.add_option("-u", dest="username",
-                      help="service username **REQUIRED for fetch**")
-    fgroup.add_option("-i", dest="indiv",
-                      help="integration source (status id, url, or listing)")
-    fgroup.add_option("-p", dest="protocol",
-                      help="status service e.g. 'twitter'",
-                      default='twitter')
-    fgroup.add_option("-s", type="int", dest="sleep",
-                      help="sleep interval between API calls",
-                      default=10)
-    parser.add_option_group(fgroup)
-
-    (opts, args) = parser.parse_args()
-
-    if len(args) < 1:
-        print "\n** Please supply an action to perform\n"
-        parser.print_help()
-        exit(1)
-    else:
-        action = args.pop(0)
-
-    if action == 'fetch' or action == 'integrate':
-        if action == 'fetch' and not opts.username:
-            print "\n** Please supply a username\n"
-            parser.print_help()
-            exit(1)
-        if action == 'integrate' and not opts.indiv:
-            print "\n** Please supply an integration source\n"
-            parser.print_help()
-            exit(1)
-        default_file = '%s-%s.json' % (opts.username, opts.protocol)
-
-    elif action == 'generate':
-        if len(args) != 1:
-            print "\n** Please supply a single status file to be converted\n"
-            parser.print_help()
-            exit(1)
-        default_file = '%s.ics' % args[0].split('.')[0]
-
-    elif action == 'merge':
-        if len(args) == 0:
-            print "\n** Please supply status files to be merged\n"
-            parser.print_help()
-            exit(1)
-        default_file = '%s-merge.json' % (
-            '-'.join([fn.split('/')[-1].split('.')[0] for fn in args]))
-
-    # set default output file
-    if not opts.file:
-        opts.file = default_file
+    """ main """
 
     dispatch = {
         'generate': status2ics,
@@ -259,6 +212,67 @@ def main():
         'fetch': fetch_statuses,
         'integrate': integrate_statuses,
         }
+
+    usage = 'usage: %%prog (%s) [options]' % '|'.join(dispatch.keys())
+    oparser = OptionParser(usage=usage, version='%prog 0.2')
+    oparser.add_option("-v", "--verbose", dest="verbose",
+                      action="store_true",
+                      help="verbose output")
+    oparser.add_option("-f", dest="file",
+                      help="output file (input and output on fetch)")
+
+    # %prog fetch options
+    fgroup = OptionGroup(oparser, "fetch/integrate options")
+    fgroup.add_option("-u", dest="username",
+                      help="service username **REQUIRED for fetch**")
+    fgroup.add_option("-i", dest="indiv",
+                      help="integration source (status id, url, or listing)")
+    fgroup.add_option("-p", dest="protocol",
+                      help="status service (default='twitter')",
+                      default='twitter')
+    fgroup.add_option("-s", type="int", dest="sleep",
+                      help="sleep interval between API calls (default=10)",
+                      default=10)
+    oparser.add_option_group(fgroup)
+
+    (opts, args) = oparser.parse_args()
+
+    if len(args) < 1:
+        print "\n** Please supply an action to perform\n"
+        emit_usage(oparser)
+    else:
+        action = args.pop(0)
+
+    if action == 'fetch' or action == 'integrate':
+        if action == 'fetch' and not opts.username:
+            print "\n** Please supply a username\n"
+            emit_usage(oparser)
+
+        if action == 'integrate':
+            if not opts.indiv:
+                print "\n** Please supply an integration source\n"
+                emit_usage(oparser)
+            if not opts.file and not opts.username:
+                print "\n** Please supply an output file or a username\n"
+                emit_usage(oparser)
+        default_file = '%s-%s.json' % (opts.username, opts.protocol)
+
+    elif action == 'generate':
+        if len(args) != 1:
+            print "\n** Please supply a single status file to be converted\n"
+            emit_usage(oparser)
+        default_file = '%s.ics' % args[0].split('.')[0]
+
+    elif action == 'merge':
+        if len(args) == 0:
+            print "\n** Please supply status files to be merged\n"
+            emit_usage(oparser)
+        default_file = '%s-merge.json' % (
+            '-'.join([fn.split('/')[-1].split('.')[0] for fn in args]))
+
+    # set default output file
+    if not opts.file:
+        opts.file = default_file
 
     dispatch[action](opts, args)
 
