@@ -20,6 +20,15 @@ def merge_status_files(opts, args):
 
         tl.extend(ctl)
 
+    for tweet in tl:
+        if not tweet.get('username') and \
+                tweet.get('user') and tweet['user'].get('screen_name'):
+            tweet['username'] = tweet['user']['screen_name']
+            tweet['protocol'] = 'twitter'
+
+        if tweet['username'] and tweet['protocol'] and tweet.get('user'):
+            del tweet['user']
+
     # sort status updates in descending order
     tl.sort(key=lambda tw: parser.parse(tw['created_at']), reverse=True)
 
