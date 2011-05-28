@@ -9,7 +9,7 @@ from optparse import OptionParser
 from time import sleep
 
 
-def fetch_statuses(opts):
+def fetch_statuses(opts, args):
     apicall = {
         'twitter': 'http://api.twitter.com/1/statuses/user_timeline.json',
         'identica' : 'http://identi.ca/api/statuses/user_timeline.json',
@@ -70,9 +70,6 @@ def fetch_statuses(opts):
     # sort tweets by most recent
     tl.sort(key=lambda tw: parser.parse(tw['created_at']), reverse=True)
 
-    return tl
-
-def write_output(tl, opts):
     with open(opts.file, 'w') as FILE:
         FILE.write(simplejson.dumps(tl, indent=2))
 
@@ -103,8 +100,7 @@ def main():
     if not opts.file:
         opts.file = '%s-%s.json' % (opts.username, opts.protocol)
 
-    tl = fetch_statuses(opts)
-    write_output(tl, opts)
+    fetch_statuses(opts)
 
 if __name__ == "__main__":
     main()
