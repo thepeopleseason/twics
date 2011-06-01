@@ -16,8 +16,8 @@ def clean_status(tweet, protocol):
     """ add username and protocol attributes to json output and remove
     extraneous user details """
 
-    if not tweet.get('username') and \
-            tweet.get('user') and tweet['user'].get('screen_name'):
+    if (not tweet.get('username') and
+        tweet.get('user') and tweet['user'].get('screen_name')):
         tweet['username'] = tweet['user']['screen_name']
         tweet['protocol'] = protocol
 
@@ -70,7 +70,7 @@ def fetch_statuses(opts, args):
             break
 
         for tweet in ctl:
-            if not seen.get(tweet['id_str']):
+            if not seen.get(tweet['id']):
                 tl.append(clean_status(tweet, opts.protocol))
         if ctl_count == 200:
             sleep(opts.sleep)
@@ -162,7 +162,7 @@ def status2ics(opts, args):
     cal.add('calscale').value ='GREGORIAN'
     cal.add('x-wr-calname').value ='status updates'
 
-    tl.sort(key=lambda tw: tw['id'], reverse=True)
+    tl.sort(key=lambda tw: parser.parse(tw['created_at']), reverse=True)
 
     for tweet in tl:
         created = parser.parse(tweet['created_at'])
@@ -243,6 +243,7 @@ def main():
     else:
         action = args.pop(0)
 
+    default_file = None
     if action == 'fetch' or action == 'integrate':
         if action == 'fetch' and not opts.username:
             print "\n** Please supply a username\n"
