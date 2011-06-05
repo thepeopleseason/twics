@@ -3,6 +3,7 @@
 """ twics.py -- various functions to convert microblogging service
 status updates into ical format for inclusion on calendars """
 
+import oauth2 as oauth
 import os.path
 import simplejson
 import urllib2
@@ -11,6 +12,8 @@ import vobject
 from dateutil import parser
 from optparse import OptionParser, OptionGroup
 from time import sleep
+
+config = {}
 
 def clean_status(tweet, protocol):
     """ add username and protocol attributes to json output and remove
@@ -57,11 +60,11 @@ def fetch_statuses(opts, args):
             print apiurl
 
         try:
-            json = urllib2.urlopen(apiurl).read()
+            json = get_content(opts, apiurl)
         except:
             print "Ratelimited: sleeping for ten minutes..."
             sleep(600)
-            json = urllib2.urlopen(apiurl).read()
+            json = get_content(opts, apiurl)
 
         ctl = simplejson.loads(json)
         ctl_count = len(ctl)
@@ -72,12 +75,42 @@ def fetch_statuses(opts, args):
         for tweet in ctl:
             if not seen.get(tweet['id']):
                 tl.append(clean_status(tweet, opts.protocol))
-        if ctl_count == 200:
+        if ctl_count < 200:
             sleep(opts.sleep)
         else:
             break
 
     write_json(tl, opts.file)
+
+def get_content(opts, apicall):
+    """ fetch content via apicall """
+    if not config['token']:
+        return urllib2.urlopen(apiurl).read()
+
+    consumer = oauth.Consumer(
+        key=config['consumer']['key'],
+        secret=config['consumer']['secret'])
+
+    token = oauth.Token(
+        key=config['token']['key'],
+        secret=config['token']['secret'])
+
+    # Create our client.
+    client = oauth.Client(consumer, token)
+
+    # The OAuth Client request works just like httplib2 for the most part.
+    if opts.verbose:
+        print "Fetching %s" % apicall
+
+    resp, content = client.request(apicall, "GET")
+
+    if opts.verbose:
+        print "Returned %s: %s" % (resp['status'], content)
+
+    if resp['status'] == '200':
+        return content
+    else:
+        return '[]'
 
 def integrate_statuses(opts, args):
     """ integrate individual statuses or a list of status urls/ids into
@@ -110,17 +143,20 @@ def integrate_statuses(opts, args):
         except ValueError:
             continue
 
-        if tid and not seen.get(tid):
+        if seen.get(tid):
+            continue
+
+        if tid:
             apiurl = '%s/%s.json' % (apicall[opts.protocol], tid)
         if opts.verbose:
             print apiurl
 
         try:
-            json = urllib2.urlopen(apiurl).read()
+            json = get_content(opts, apiurl)
         except:
             print "Ratelimited: sleeping for ten minutes..."
             sleep(600)
-            json = urllib2.urlopen(apiurl).read()
+            json = get_content(opts, apiurl)
 
         tweet = simplejson.loads(json)
 
@@ -128,6 +164,14 @@ def integrate_statuses(opts, args):
         sleep(opts.sleep)
 
     write_json(tl, opts.file)
+
+def load_keyfile(config, key, keyfile):
+    keys = {}
+    if os.path.isfile(keyfile):
+        with open(keyfile) as kfile:
+            keys = simplejson.loads(kfile.read())
+
+    config[key] = keys
 
 def load_json_list(input_file):
     """ load json file and return the listing (otherwise return empty list)"""
@@ -225,6 +269,8 @@ def main():
     fgroup = OptionGroup(oparser, "fetch/integrate options")
     fgroup.add_option("-u", dest="username",
                       help="service username **REQUIRED for fetch**")
+    fgroup.add_option("-k", dest="keyfile",
+                      help="file containing JSON-formatted OAuth Token")
     fgroup.add_option("-i", dest="indiv",
                       help="integration source (status id, url, or listing)")
     fgroup.add_option("-p", dest="protocol",
@@ -257,6 +303,7 @@ def main():
                 print "\n** Please supply an output file or a username\n"
                 emit_usage(oparser)
         default_file = '%s-%s.json' % (opts.username, opts.protocol)
+        default_keyfile = '%s.keys' % (opts.username)
 
     elif action == 'generate':
         if len(args) != 1:
@@ -274,6 +321,12 @@ def main():
     # set default output file
     if not opts.file:
         opts.file = default_file
+
+    if opts.protocol == 'twitter':
+        if not opts.keyfile and default_keyfile:
+            opts.keyfile = default_keyfile
+        load_keyfile(config, 'token', opts.keyfile)
+        load_keyfile(config, 'consumer', 'twics.keys')
 
     dispatch[action](opts, args)
 
