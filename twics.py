@@ -13,7 +13,7 @@ from dateutil import parser
 from optparse import OptionParser, OptionGroup
 from time import sleep
 
-config = {}
+CONFIG = {}
 
 def clean_status(tweet, protocol):
     """ add username and protocol attributes to json output and remove
@@ -84,16 +84,16 @@ def fetch_statuses(opts, args):
 
 def get_content(opts, apicall):
     """ fetch content via apicall """
-    if not config['token']:
-        return urllib2.urlopen(apiurl).read()
+    if not CONFIG['token']:
+        return urllib2.urlopen(apicall).read()
 
     consumer = oauth.Consumer(
-        key=config['consumer']['key'],
-        secret=config['consumer']['secret'])
+        key=CONFIG['consumer']['key'],
+        secret=CONFIG['consumer']['secret'])
 
     token = oauth.Token(
-        key=config['token']['key'],
-        secret=config['token']['secret'])
+        key=CONFIG['token']['key'],
+        secret=CONFIG['token']['secret'])
 
     # Create our client.
     client = oauth.Client(consumer, token)
@@ -130,8 +130,8 @@ def integrate_statuses(opts, args):
 
     # process integration source
     if os.path.isfile(opts.indiv):
-        with open(opts.indiv, 'r') as FILE:
-            lines = FILE.read().split('\n')
+        with open(opts.indiv, 'r') as ifile:
+            lines = ifile.read().split('\n')
     else:
         # url/id passed in on command line
         lines = [ opts.indiv, ]
@@ -165,19 +165,21 @@ def integrate_statuses(opts, args):
 
     write_json(tl, opts.file)
 
-def load_keyfile(config, key, keyfile):
+def load_keyfile(key, keyfile):
+    """ load keyfile into CONFIG """
+
     keys = {}
     if os.path.isfile(keyfile):
         with open(keyfile) as kfile:
             keys = simplejson.loads(kfile.read())
 
-    config[key] = keys
+    CONFIG[key] = keys
 
 def load_json_list(input_file):
     """ load json file and return the listing (otherwise return empty list)"""
     if os.path.isfile(input_file):
-        with open(input_file, 'r') as FILE:
-            listing = simplejson.loads(FILE.read())
+        with open(input_file, 'r') as jsonfile:
+            listing = simplejson.loads(jsonfile.read())
     else:
         listing = []
 
@@ -228,8 +230,8 @@ def status2ics(opts, args):
         event.add('uid').value = uid
 
     icsfile = opts.file
-    with open(icsfile, 'w') as FILE:
-        FILE.write(cal.serialize())
+    with open(icsfile, 'w') as ifile:
+        ifile.write(cal.serialize())
 
 def write_json(tl, output_file):
     """ write output json file """
@@ -237,8 +239,8 @@ def write_json(tl, output_file):
     # sort status updates in descending order
     tl.sort(key=lambda tw: parser.parse(tw['created_at']), reverse=True)
 
-    with open(output_file, 'w') as FILE:
-        FILE.write(simplejson.dumps(tl, indent=2))
+    with open(output_file, 'w') as jfile:
+        jfile.write(simplejson.dumps(tl, indent=2))
 
 def emit_usage(oparser, die=True):
     """ emit program help """
@@ -260,10 +262,12 @@ def main():
     usage = 'usage: %%prog (%s) [options]' % '|'.join(dispatch.keys())
     oparser = OptionParser(usage=usage, version='%prog 0.2')
     oparser.add_option("-v", "--verbose", dest="verbose",
-                      action="store_true",
-                      help="verbose output")
+                       action="store_true",
+                       help="verbose output")
+    oparser.add_option("-c", "--consumer", dest="conkey",
+                       help="file with Twitter OAuth Consumer Key/Secret")
     oparser.add_option("-f", dest="file",
-                      help="output file (input and output on fetch)")
+                       help="output file (input and output on fetch)")
 
     # %prog fetch options
     fgroup = OptionGroup(oparser, "fetch/integrate options")
@@ -304,6 +308,7 @@ def main():
                 emit_usage(oparser)
         default_file = '%s-%s.json' % (opts.username, opts.protocol)
         default_keyfile = '%s.keys' % (opts.username)
+        default_conkey = 'twics.keys'
 
     elif action == 'generate':
         if len(args) != 1:
@@ -325,8 +330,10 @@ def main():
     if opts.protocol == 'twitter':
         if not opts.keyfile and default_keyfile:
             opts.keyfile = default_keyfile
-        load_keyfile(config, 'token', opts.keyfile)
-        load_keyfile(config, 'consumer', 'twics.keys')
+        if not opts.conkey and default_conkey:
+            opts.conkey = default_conkey
+        load_keyfile('token', opts.keyfile)
+        load_keyfile('consumer', opts.conkey)
 
     dispatch[action](opts, args)
 
